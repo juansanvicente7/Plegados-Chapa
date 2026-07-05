@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#ffffff">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Plegados">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23151515'/%3E%3Cpath d='M6 22h12v-9l5-4' fill='none' stroke='%23fff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<title>Plegados — corte y plegado de chapa</title>
+<style>
+  :root{
+    --ink:#151515; --line:#e3e3de; --soft:#8a8a84; --bg:#f6f6f4;
+    --card:#ffffff; --accent:#111111; --warn:#b45309; --err:#b91c1c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink);font-size:14px}
+  button{font:inherit;cursor:pointer}
+  input,select{font:inherit;color:var(--ink);border:1px solid #d6d6d0;border-radius:6px;padding:6px 8px;background:#fff;max-width:100%}
+  input:focus,select:focus{outline:2px solid #11111122;border-color:#999}
+  label{display:block;font-size:12px;color:var(--soft);margin-bottom:3px}
+
+  .topbar{display:flex;align-items:center;gap:14px;padding:12px 22px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+  .topbar h1{font-size:16px;margin:0;font-weight:700;letter-spacing:.2px}
+  .topbar .sub{color:var(--soft);font-size:12px}
+  .topbar .spacer{flex:1}
+  .btn{border:1px solid #d6d6d0;background:#fff;border-radius:7px;padding:7px 13px}
+  .btn:hover{background:#f2f2ee}
+  .btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .btn.primary:hover{background:#333}
+  .btn.small{padding:4px 9px;font-size:12px}
+  .btn.danger{color:var(--err)}
+
+  main{max-width:1200px;margin:0 auto;padding:18px 22px 60px;display:grid;gap:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:var(--soft);margin:0 0 12px;font-weight:600}
+
+  .datos-grid{display:grid;grid-template-columns:2fr 2fr 1.2fr 1.8fr 1.4fr;gap:12px}
+  @media (max-width:900px){.datos-grid{grid-template-columns:1fr 1fr}}
+  .datos-grid input,.datos-grid select{width:100%}
+
+  .cols{display:grid;grid-template-columns:270px 1fr;gap:16px;align-items:start}
+  @media (max-width:900px){.cols{grid-template-columns:1fr}}
+
+  .pieza-item{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:1px solid transparent;border-left:3px solid transparent;border-radius:7px;padding:9px 10px;margin-bottom:4px}
+  .pieza-item:hover{background:#f4f4f0}
+  .pieza-item.sel{background:#f1f1ec;border-color:var(--line);border-left-color:var(--accent)}
+  .pieza-item .num{font-weight:700;font-size:12px;color:var(--soft);min-width:30px}
+  .pieza-item .nm{flex:1;font-weight:600}
+  .pieza-item .qt{font-size:12px;color:var(--soft)}
+
+  .fila{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+  .fila>div{min-width:0}
+  table.segs{border-collapse:collapse;width:100%;margin-bottom:8px}
+  table.segs th{font-size:11px;color:var(--soft);text-align:left;font-weight:600;padding:4px 6px;border-bottom:1px solid var(--line)}
+  table.segs td{padding:4px 6px}
+  table.segs input,table.segs select{width:100%}
+  table.segs td.rm{width:34px}
+  .x-btn{border:none;background:none;color:var(--soft);font-size:15px;padding:2px 7px;border-radius:5px}
+  .x-btn:hover{background:#f0e5e5;color:var(--err)}
+
+  .avisos{margin:8px 0}
+  .avisos div{font-size:13px;padding:3px 0}
+  .avisos .w{color:var(--warn)}
+  .avisos .e{color:var(--err);font-weight:600}
+
+  .previews{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+  @media (max-width:800px){.previews{grid-template-columns:1fr}}
+  .previews figure{margin:0;border:1px solid var(--line);border-radius:8px;padding:8px;background:#fdfdfc}
+  .previews figcaption{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--soft);margin-bottom:4px}
+  .previews svg{width:100%;height:auto;display:block}
+  .dev-line{font-size:13px;color:var(--soft);margin-top:10px}
+  .dev-line b{color:var(--ink)}
+
+  .plan-stats{font-size:14px;margin-bottom:12px}
+  .plan-stats b{font-size:16px}
+  .sheets{display:flex;flex-wrap:wrap;gap:20px}
+  .sheet-fig{margin:0}
+  .sheet-fig figcaption{font-size:12px;font-weight:600;margin-bottom:5px}
+  .sheet-fig .waste{color:var(--soft);font-weight:400}
+  .sheet-fig svg{display:block}
+
+  .hint{font-size:12px;color:var(--soft)}
+
+  .seg-wrap{overflow-x:auto}
+
+  /* ---------- celular ---------- */
+  @media (max-width:640px){
+    .topbar{flex-wrap:wrap;padding:10px 12px;gap:8px}
+    .topbar .sub{display:none}
+    .topbar .btn{padding:7px 10px;font-size:13px}
+    main{padding:12px 10px 60px}
+    .card{padding:12px}
+    .datos-grid{grid-template-columns:1fr}
+    .previews{grid-template-columns:1fr}
+    input,select{font-size:16px} /* evita el zoom automático de iOS al enfocar */
+    table.segs{min-width:520px}
+    .fila>div{flex:1 1 45%}
+  }
+
+  /* ---------- impresión ---------- */
+  #printArea{display:none}
+  @media print{
+    @page{size:A4 portrait;margin:12mm}
+    body{background:#fff}
+    body>*:not(#printArea){display:none !important}
+    #printArea{display:block}
+    .pg{page-break-after:always}
+    .pg:last-child{page-break-after:auto}
+    .pg h1{font-size:19px;margin:0 0 2px}
+    .pg h2{font-size:17px;margin:0 0 14px}
+    .pg .meta{font-size:12px;color:#444;margin-bottom:14px}
+    .pg table.res{border-collapse:collapse;width:100%;font-size:12px;margin-top:10px}
+    .pg table.res th,.pg table.res td{border:1px solid #999;padding:5px 8px;text-align:left}
+    .pg table.res th{background:#eee}
+    .pg svg{max-width:100%;height:auto}
+    .pg .foot{position:fixed;bottom:0;left:0;right:0;font-size:9px;color:#888;text-align:right}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div>
+    <h1>Plegados</h1>
+    <div class="sub">corte y plegado de chapa</div>
+  </div>
+  <div class="spacer"></div>
+  <button class="btn" data-act="nuevo">Nuevo</button>
+  <button class="btn" data-act="exportar">Exportar</button>
+  <button class="btn" data-act="importar">Importar</button>
+  <input type="file" id="fileImport" accept=".json,application/json" style="display:none">
+  <button class="btn primary" data-act="pdf">Generar PDF</button>
+</header>
+
+<main>
+  <section class="card">
+    <h2>Datos del trabajo</h2>
+    <div class="datos-grid">
+      <div><label>Obra / trabajo</label><input id="f_obra" placeholder="Ej.: Vivienda Sarmiento 1240"></div>
+      <div><label>Cliente / chapista</label><input id="f_cliente" placeholder="Ej.: Germán Vidal"></div>
+      <div><label>Fecha</label><input id="f_fecha" type="date"></div>
+      <div><label>Material</label><select id="f_material"></select></div>
+      <div><label>Chapa</label><select id="f_chapa"></select></div>
+    </div>
+  </section>
+
+  <div class="cols">
+    <aside class="card">
+      <h2>Cortes</h2>
+      <div id="listaPiezas"></div>
+      <button class="btn small" data-act="add-pieza" style="margin-top:8px">+ Agregar corte</button>
+    </aside>
+
+    <section class="card" id="editorCard">
+      <h2>Corte seleccionado</h2>
+      <div id="editor"></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>Plan de corte</h2>
+    <div id="plan"></div>
+    <p class="hint" style="margin-bottom:0">La distribución minimiza el desperdicio con cortes rectos de guillotina. Todas las cotas son de plegado directo, sin descuento.</p>
+  </section>
+</main>
+
+<div id="printArea"></div>
+
+<script>
+'use strict';
+
+/* ================= constantes del taller ================= */
+const MATERIALES = {
+  g050:{label:'Chapa lisa galvanizada 0,50 mm (C25)', corto:'GALV. 0,50 MM (C25)'},
+  g040:{label:'Chapa lisa galvanizada 0,40 mm (C27)', corto:'GALV. 0,40 MM (C27)'}
+};
+const CHAPAS = {
+  c1220:{w:1220,h:2440,label:'1,22 × 2,44 m'},
+  c1000:{w:1000,h:2000,label:'1,00 × 2,00 m'}
+};
+const LIMITES = {plegadoMax:3000, pestanaMin:10}; // mm
+const LS_KEY = 'plegadosApp.v1';
+
+/* ================= estado ================= */
+function hoyISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+function piezaNueva(nombre){
+  return { id: Date.now()+Math.random(), nombre: nombre||'Corte', largo:2440, cant:1,
+    segs:[ {len:100}, {len:490, ang:90, dir:'arriba'} ] };
+}
+function trabajoNuevo(){
+  const demo = { id:1, nombre:'Babeta', largo:2440, cant:1,
+    segs:[ {len:110}, {len:60, ang:90, dir:'arriba'}, {len:30, ang:135, dir:'arriba'} ] };
+  return { obra:'', cliente:'', fecha:hoyISO(), material:'g050', chapa:'c1220', piezas:[demo], sel:0 };
+}
+let S;
+try { S = JSON.parse(localStorage.getItem(LS_KEY)) || trabajoNuevo(); }
+catch(e){ S = trabajoNuevo(); }
+if(!S.piezas || !S.piezas.length){ S = trabajoNuevo(); }
+let lastPack = null;
+
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){} }
+function num(x,def){ const n=parseFloat(x); return isFinite(n)&&n>0 ? n : (def||0); }
+function fmt(n){ return Math.round(n*10)/10 % 1 === 0 ? String(Math.round(n)) : (Math.round(n*10)/10).toFixed(1); }
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function chapaSel(){ return CHAPAS[S.chapa] || CHAPAS.c1220; }
+function matSel(){ return MATERIALES[S.material] || MATERIALES.g050; }
+
+/* ================= geometría del perfil ================= */
+function desarrollo(p){ return p.segs.reduce((a,s)=>a+num(s.len),0); }
+
+function profilePoints(p){
+  // Devuelve vértices del perfil (u horizontal, v altura). Sin descuento: cada tramo mide su cota.
+  let u=0,v=0,heading=0;
+  const pts=[{u:0,v:0}];
+  for(let i=0;i<p.segs.length;i++){
+    if(i>0){
+      const s=p.segs[i];
+      const ang=Math.min(179,Math.max(15,num(s.ang,90)));
+      const turn=(180-ang)*(s.dir==='abajo'?-1:1);
+      heading+=turn;
+    }
+    const r=heading*Math.PI/180, L=num(p.segs[i].len,1);
+    u+=L*Math.cos(r); v+=L*Math.sin(r);
+    pts.push({u,v});
+  }
+  return pts;
+}
+
+function avisosPieza(p){
+  const out=[];
+  const ch=chapaSel();
+  const dev=desarrollo(p), largo=num(p.largo);
+  p.segs.forEach((s,i)=>{
+    if(p.segs.length>1 && num(s.len)>0 && num(s.len)<LIMITES.pestanaMin)
+      out.push({t:'w',m:'Tramo '+(i+1)+' ('+fmt(num(s.len))+' mm): menor a la pestaña mínima de la plegadora ('+LIMITES.pestanaMin+' mm).'});
+  });
+  if(largo>LIMITES.plegadoMax) out.push({t:'e',m:'Largo '+fmt(largo)+' mm: supera el máximo de plegado ('+LIMITES.plegadoMax+' mm).'});
+  const cabe=(dev<=ch.w&&largo<=ch.h)||(dev<=ch.h&&largo<=ch.w);
+  if(!cabe) out.push({t:'e',m:'La pieza ('+fmt(dev)+' × '+fmt(largo)+' mm) no entra en la chapa de '+ch.w+' × '+ch.h+' mm.'});
+  return out;
+}
+
+/* ================= etiquetas sin superposición ================= */
+function layoutLabels(labels, W, H){
+  // labels: {ax,ay (ancla), x,y (posición deseada), text, halfW, bold?, size?}
+  labels.sort((a,b)=>a.y-b.y);
+  for(let i=1;i<labels.length;i++){
+    for(let j=0;j<i;j++){
+      const a=labels[j], b=labels[i];
+      if(Math.abs(a.x-b.x) < a.halfW+b.halfW+6 && Math.abs(a.y-b.y) < 15) b.y=a.y+15;
+    }
+  }
+  let out='';
+  for(const l of labels){
+    l.x=Math.min(W-l.halfW-2,Math.max(l.halfW+2,l.x));
+    l.y=Math.min(H-6,Math.max(12,l.y));
+    const d=Math.hypot(l.x-l.ax,l.y-l.ay);
+    if(d>26){
+      const t=(d-14)/d;
+      out+='<line x1="'+l.ax.toFixed(1)+'" y1="'+l.ay.toFixed(1)+'" x2="'+(l.ax+(l.x-l.ax)*t).toFixed(1)+'" y2="'+(l.ay+(l.y-l.ay)*t).toFixed(1)+'" stroke="#151515" stroke-width="1.2"/>';
+    }
+    out+='<text x="'+l.x.toFixed(1)+'" y="'+(l.y+4).toFixed(1)+'" font-size="'+(l.size||12)+'"'+(l.bold===false?'':' font-weight="600"')+' text-anchor="middle" fill="'+(l.fill||'#151515')+'">'+l.text+'</text>';
+  }
+  return out;
+}
+
+/* ================= SVG: perfil 2D con cotas ================= */
+function perfilSVG(p, W, H){
+  const pts=profilePoints(p);
+  if(pts.length<2) return '<svg viewBox="0 0 10 10"></svg>';
+  const P=pts.map(q=>[q.u,-q.v]);
+  let x0=1/0,x1=-1/0,y0=1/0,y1=-1/0;
+  P.forEach(([x,y])=>{ x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y); });
+  const m=52, s=Math.min((W-2*m)/Math.max(x1-x0,1),(H-2*m)/Math.max(y1-y0,1));
+  const ox=(W-(x1-x0)*s)/2, oy=(H-(y1-y0)*s)/2;
+  const T=([x,y])=>[(x-x0)*s+ox,(y-y0)*s+oy];
+  const V=P.map(T);
+  const cx=V.reduce((a,q)=>a+q[0],0)/V.length, cy=V.reduce((a,q)=>a+q[1],0)/V.length;
+
+  let svg='<polyline points="'+V.map(q=>q[0].toFixed(1)+','+q[1].toFixed(1)).join(' ')+'" fill="none" stroke="#151515" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>';
+
+  const labels=[];
+  for(let i=0;i<p.segs.length;i++){
+    const a=V[i],b=V[i+1];
+    const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;
+    let nx=-(b[1]-a[1]),ny=b[0]-a[0];
+    const d=Math.hypot(nx,ny)||1; nx/=d;ny/=d;
+    if(nx*(mx-cx)+ny*(my-cy)<0){nx=-nx;ny=-ny;}
+    labels.push({ax:mx,ay:my,x:mx+nx*18,y:my+ny*18,text:fmt(num(p.segs[i].len)),halfW:16});
+  }
+  for(let i=1;i<p.segs.length;i++){
+    const q=V[i];
+    let dx=q[0]-cx,dy=q[1]-cy;
+    const d=Math.hypot(dx,dy)||1; dx/=d;dy/=d;
+    const s2=p.segs[i];
+    labels.push({ax:q[0],ay:q[1],x:q[0]+dx*34,y:q[1]+dy*34,text:fmt(num(s2.ang,90))+'° '+(s2.dir==='abajo'?'▼':'▲'),halfW:22,size:10.5,bold:false,fill:'#77776f'});
+  }
+  svg+=layoutLabels(labels,W,H);
+  return '<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,sans-serif">'+svg+'</svg>';
+}
+
+/* ================= SVG: isométrica ================= */
+function isoSVG(p, W, H){
+  const pts=profilePoints(p);
+  if(pts.length<2) return '<svg viewBox="0 0 10 10"></svg>';
+  const L=num(p.largo,1000);
+  const c30=Math.cos(Math.PI/6);
+  const pr=(x,y,z)=>[(x-y)*c30,(x+y)*0.5-z];
+  const far=pts.map(q=>pr(q.u,0,q.v));
+  const near=pts.map(q=>pr(q.u,L,q.v));
+  const all=far.concat(near);
+  let x0=1/0,x1=-1/0,y0=1/0,y1=-1/0;
+  all.forEach(([x,y])=>{ x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y); });
+  const m=64, s=Math.min((W-2*m)/Math.max(x1-x0,1),(H-2*m)/Math.max(y1-y0,1));
+  const ox=(W-(x1-x0)*s)/2, oy=(H-(y1-y0)*s)/2;
+  const T=([x,y])=>[(x-x0)*s+ox,(y-y0)*s+oy];
+  const F=far.map(T), N=near.map(T);
+  const allT=F.concat(N);
+  const cx=allT.reduce((a,q)=>a+q[0],0)/allT.length, cy=allT.reduce((a,q)=>a+q[1],0)/allT.length;
+
+  // caras: una por tramo, pintadas de atrás hacia adelante
+  const faces=[];
+  for(let i=0;i<pts.length-1;i++){
+    const du=pts[i+1].u-pts[i].u, dv=pts[i+1].v-pts[i].v;
+    const len=Math.hypot(du,dv)||1;
+    const slope=Math.abs(dv)/len;
+    faces.push({i, depth:pts[i].u+pts[i+1].u+pts[i].v+pts[i+1].v, fill: slope>0.5?'#9c9c9c':'#cdcdcd'});
+  }
+  faces.sort((a,b)=>a.depth-b.depth);
+  let svg='';
+  for(const f of faces){
+    const q=[F[f.i],F[f.i+1],N[f.i+1],N[f.i]];
+    svg+='<polygon points="'+q.map(t=>t[0].toFixed(1)+','+t[1].toFixed(1)).join(' ')+'" fill="'+f.fill+'" stroke="#3d3d3d" stroke-width="1.1" stroke-linejoin="round"/>';
+  }
+
+  // cota del largo, sobre la arista lateral más visible
+  const labels=[];
+  let j=0,best=-1/0;
+  pts.forEach((q,i)=>{ if(q.u+q.v>best){best=q.u+q.v;j=i;} });
+  {
+    const a=F[j],b=N[j];
+    const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;
+    let nx=-(b[1]-a[1]),ny=b[0]-a[0];
+    const d=Math.hypot(nx,ny)||1; nx/=d;ny/=d;
+    if(nx*(mx-cx)+ny*(my-cy)<0){nx=-nx;ny=-ny;}
+    const o=18;
+    svg+='<line x1="'+(a[0]+nx*o).toFixed(1)+'" y1="'+(a[1]+ny*o).toFixed(1)+'" x2="'+(b[0]+nx*o).toFixed(1)+'" y2="'+(b[1]+ny*o).toFixed(1)+'" stroke="#77776f" stroke-width="1"/>';
+    labels.push({ax:mx+nx*o,ay:my+ny*o,x:mx+nx*(o+15),y:my+ny*(o+15),text:fmt(L)+' mm',halfW:30});
+  }
+
+  // cotas de cada tramo sobre el borde cercano; pestañas con llamado "Plegado"
+  for(let i=0;i<p.segs.length;i++){
+    const len=num(p.segs[i].len);
+    const a=N[i],b=N[i+1];
+    const mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2;
+    let nx=mx-cx,ny=my-cy; const d=Math.hypot(nx,ny)||1; nx/=d;ny/=d;
+    const callout = p.segs.length>1 && len<=50;
+    const o = callout?56:20;
+    labels.push({ax:mx,ay:my,x:mx+nx*o,y:my+ny*o,
+      text: callout?('Plegado '+fmt(len)+' mm'):(fmt(len)+' mm'),
+      halfW: callout?48:26});
+  }
+  svg+=layoutLabels(labels,W,H);
+  return '<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,sans-serif">'+svg+'</svg>';
+}
+
+/* ================= optimización: empaquetado guillotina ================= */
+function packRects(items, W, H){
+  // items: {w,h,k,nombre}. Cortes de guillotina, con rotación. BSSF greedy.
+  const rem=items.slice();
+  const sinLugar=rem.filter(r=>!((r.w<=W&&r.h<=H)||(r.h<=W&&r.w<=H)));
+  if(sinLugar.length) return {sheets:[], sinLugar};
+  const sheets=[];
+  while(rem.length){
+    const free=[{x:0,y:0,w:W,h:H}];
+    const placed=[];
+    for(;;){
+      let best=null;
+      for(let ri=0;ri<rem.length;ri++){
+        const r=rem[ri];
+        const orients = r.w===r.h ? [false] : [false,true];
+        for(const rot of orients){
+          const w=rot?r.h:r.w, h=rot?r.w:r.h;
+          for(let fi=0;fi<free.length;fi++){
+            const f=free[fi];
+            if(w<=f.w&&h<=f.h){
+              const score=Math.min(f.w-w,f.h-h);
+              if(!best||score<best.score) best={ri,fi,rot,w,h,score};
+            }
+          }
+        }
+      }
+      if(!best) break;
+      const f=free[best.fi], r=rem[best.ri];
+      placed.push({x:f.x,y:f.y,w:best.w,h:best.h,k:r.k,nombre:r.nombre});
+      rem.splice(best.ri,1);
+      free.splice(best.fi,1);
+      const rw=f.w-best.w, rh=f.h-best.h;
+      let r1,r2;
+      if(rw<rh){ r1={x:f.x+best.w,y:f.y,w:rw,h:best.h}; r2={x:f.x,y:f.y+best.h,w:f.w,h:rh}; }
+      else     { r1={x:f.x+best.w,y:f.y,w:rw,h:f.h};    r2={x:f.x,y:f.y+best.h,w:best.w,h:rh}; }
+      if(r1.w>0.5&&r1.h>0.5) free.push(r1);
+      if(r2.w>0.5&&r2.h>0.5) free.push(r2);
+    }
+    if(!placed.length) break;
+    sheets.push({placed, uso: placed.reduce((a,q)=>a+q.w*q.h,0)/(W*H)});
+  }
+  return {sheets, sinLugar:[]};
+}
+
+function calcularPlan(){
+  const ch=chapaSel();
+  const items=[];
+  S.piezas.forEach((p,idx)=>{
+    const dev=desarrollo(p), largo=num(p.largo);
+    if(dev<=0||largo<=0) return;
+    for(let c=0;c<Math.max(1,Math.round(num(p.cant,1)));c++)
+      items.push({w:dev,h:largo,k:idx+1,nombre:p.nombre});
+  });
+  lastPack = packRects(items, ch.w, ch.h);
+  return lastPack;
+}
+
+/* ================= SVG: chapa con distribución ================= */
+function sheetSVG(sheet, pxW){
+  const ch=chapaSel();
+  const s=pxW/ch.w, pxH=ch.h*s;
+  let svg='<rect x="0" y="0" width="'+pxW+'" height="'+pxH.toFixed(1)+'" fill="#ffffff" stroke="#151515" stroke-width="1.6"/>';
+  for(const q of sheet.placed){
+    const x=q.x*s,y=q.y*s,w=q.w*s,h=q.h*s;
+    svg+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+w.toFixed(1)+'" height="'+h.toFixed(1)+'" fill="#cdcdcd" stroke="#3d3d3d" stroke-width="1.1"/>';
+    const cx=x+w/2, cy=y+h/2;
+    const fs=Math.max(9,Math.min(14,Math.min(w,h)/4));
+    const vertical = w<64 && h>w*1.4;
+    const rot = vertical ? ' transform="rotate(-90 '+cx.toFixed(1)+' '+cy.toFixed(1)+')"' : '';
+    if(Math.min(w,h)>=18){
+      svg+='<text x="'+cx.toFixed(1)+'" y="'+(cy-2).toFixed(1)+'" font-size="'+fs+'" font-weight="700" text-anchor="middle" fill="#151515"'+rot+'>N°'+q.k+'</text>';
+      svg+='<text x="'+cx.toFixed(1)+'" y="'+(cy+fs).toFixed(1)+'" font-size="'+(fs*0.82).toFixed(1)+'" text-anchor="middle" fill="#333"'+rot+'>'+fmt(q.w)+' × '+fmt(q.h)+'</text>';
+    }
+  }
+  return '<svg viewBox="0 0 '+pxW+' '+pxH.toFixed(1)+'" width="'+pxW+'" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,sans-serif">'+svg+'</svg>';
+}
+
+/* ================= render de la app ================= */
+const el=id=>document.getElementById(id);
+
+function renderDatos(){
+  el('f_obra').value=S.obra||'';
+  el('f_cliente').value=S.cliente||'';
+  el('f_fecha').value=S.fecha||hoyISO();
+  el('f_material').innerHTML=Object.keys(MATERIALES).map(k=>'<option value="'+k+'"'+(k===S.material?' selected':'')+'>'+MATERIALES[k].label+'</option>').join('');
+  el('f_chapa').innerHTML=Object.keys(CHAPAS).map(k=>'<option value="'+k+'"'+(k===S.chapa?' selected':'')+'>'+CHAPAS[k].label+' ('+CHAPAS[k].w+' × '+CHAPAS[k].h+' mm)</option>').join('');
+}
+
+function renderLista(){
+  el('listaPiezas').innerHTML=S.piezas.map((p,i)=>
+    '<button class="pieza-item'+(i===S.sel?' sel':'')+'" data-act="sel-pieza" data-i="'+i+'">'+
+    '<span class="num">N°'+(i+1)+'</span><span class="nm">'+esc(p.nombre)+'</span><span class="qt">×'+fmt(num(p.cant,1))+'</span></button>'
+  ).join('') || '<p class="hint">Sin cortes. Agregá el primero.</p>';
+}
+
+function renderEditor(){
+  const p=S.piezas[S.sel];
+  if(!p){ el('editor').innerHTML='<p class="hint">Agregá un corte para empezar.</p>'; return; }
+  let h='<div class="fila">'+
+    '<div style="flex:2;min-width:160px"><label>Nombre</label><input data-f="nombre" value="'+esc(p.nombre)+'"></div>'+
+    '<div style="width:120px"><label>Largo (mm)</label><input data-f="largo" type="number" min="1" step="any" value="'+p.largo+'"></div>'+
+    '<div style="width:100px"><label>Cantidad</label><input data-f="cant" type="number" min="1" step="1" value="'+p.cant+'"></div>'+
+    '<div style="align-self:flex-end;display:flex;gap:6px">'+
+      '<button class="btn small" data-act="dup-pieza">Duplicar</button>'+
+      '<button class="btn small danger" data-act="del-pieza">Eliminar</button>'+
+    '</div></div>';
+
+  h+='<div class="seg-wrap"><table class="segs"><tr><th style="width:36px">#</th><th>Longitud del tramo (mm)</th><th style="width:150px">Ángulo con el anterior</th><th style="width:120px">Pliegue</th><th class="rm"></th></tr>';
+  p.segs.forEach((sg,i)=>{
+    h+='<tr><td>'+(i+1)+'</td>'+
+      '<td><input data-sf="len" data-i="'+i+'" type="number" min="1" step="any" value="'+sg.len+'"></td>';
+    if(i===0){
+      h+='<td><span class="hint">— (tramo inicial)</span></td><td></td>';
+    } else {
+      h+='<td><input data-sf="ang" data-i="'+i+'" type="number" min="15" max="179" step="any" value="'+(sg.ang!=null?sg.ang:90)+'"> °</td>'+
+         '<td><select data-sf="dir" data-i="'+i+'"><option value="arriba"'+(sg.dir!=='abajo'?' selected':'')+'>▲ arriba</option><option value="abajo"'+(sg.dir==='abajo'?' selected':'')+'>▼ abajo</option></select></td>';
+    }
+    h+='<td class="rm">'+(p.segs.length>1?'<button class="x-btn" data-act="del-seg" data-i="'+i+'" title="Quitar tramo">✕</button>':'')+'</td></tr>';
+  });
+  h+='</table></div><button class="btn small" data-act="add-seg">+ Agregar tramo</button>';
+  h+='<div class="avisos" id="avisosPieza"></div>';
+  h+='<div class="previews">'+
+     '<figure><figcaption>Perfil (sección) — cotas en mm</figcaption><div id="prevPerfil"></div></figure>'+
+     '<figure><figcaption>Isométrica</figcaption><div id="prevIso"></div></figure></div>'+
+     '<div class="dev-line" id="devLine"></div>';
+  el('editor').innerHTML=h;
+  renderPreviews();
+}
+
+function renderPreviews(){
+  const p=S.piezas[S.sel];
+  if(!p) return;
+  const pf=el('prevPerfil'), is=el('prevIso'), dl=el('devLine'), av=el('avisosPieza');
+  if(!pf) return;
+  pf.innerHTML=perfilSVG(p,430,250);
+  is.innerHTML=isoSVG(p,460,290);
+  dl.innerHTML='Desarrollo (chapa plana): <b>'+fmt(desarrollo(p))+' mm</b> &nbsp;·&nbsp; Largo: <b>'+fmt(num(p.largo))+' mm</b> &nbsp;·&nbsp; Superficie por unidad: <b>'+(desarrollo(p)*num(p.largo)/1e6).toFixed(2)+' m²</b>';
+  av.innerHTML=avisosPieza(p).map(a=>'<div class="'+a.t+'">'+(a.t==='e'?'✖ ':'⚠ ')+esc(a.m)+'</div>').join('');
+}
+
+function renderPlan(){
+  const pack=calcularPlan();
+  const ch=chapaSel();
+  let h='';
+  if(pack.sinLugar.length){
+    h+='<div class="avisos"><div class="e">✖ Hay piezas que no entran en la chapa seleccionada: '+
+       pack.sinLugar.map(r=>'N°'+r.k+' ('+fmt(r.w)+' × '+fmt(r.h)+' mm)').join(', ')+'. Corregilas para calcular el plan.</div></div>';
+    el('plan').innerHTML=h; return;
+  }
+  if(!pack.sheets.length){ el('plan').innerHTML='<p class="hint">Cargá al menos un corte con medidas para ver el plan.</p>'; return; }
+  const usoTotal=pack.sheets.reduce((a,s)=>a+s.uso,0)/pack.sheets.length;
+  h+='<div class="plan-stats">Chapas de '+ch.label+' necesarias: <b>'+pack.sheets.length+'</b> &nbsp;·&nbsp; Aprovechamiento: <b>'+Math.round(usoTotal*100)+'%</b> &nbsp;·&nbsp; Desperdicio: <b>'+Math.round((1-usoTotal)*100)+'%</b></div>';
+  h+='<div class="sheets">'+pack.sheets.map((s,i)=>
+    '<figure class="sheet-fig"><figcaption>CHAPA N°'+(i+1)+' <span class="waste">· aprovechamiento '+Math.round(s.uso*100)+'%</span></figcaption>'+sheetSVG(s,230)+'</figure>'
+  ).join('')+'</div>';
+  el('plan').innerHTML=h;
+}
+
+function renderAll(){ renderDatos(); renderLista(); renderEditor(); renderPlan(); }
+
+/* ================= impresión / PDF ================= */
+function fechaLegible(){
+  const f=(S.fecha||hoyISO()).split('-');
+  return f.length===3 ? f[2]+'/'+f[1]+'/'+f[0] : S.fecha;
+}
+function buildPrint(){
+  const pack=calcularPlan();
+  const ch=chapaSel(), mat=matSel();
+  const meta='Obra: <b>'+esc(S.obra||'—')+'</b> &nbsp;·&nbsp; Cliente: <b>'+esc(S.cliente||'—')+'</b> &nbsp;·&nbsp; Fecha: <b>'+fechaLegible()+'</b> &nbsp;·&nbsp; Material: <b>'+esc(mat.label)+'</b> &nbsp;·&nbsp; Chapa: <b>'+ch.label+' ('+ch.w+' × '+ch.h+' mm)</b>';
+  let h='';
+
+  // Página 1: resumen
+  h+='<div class="pg"><h1>PLEGADO DE CHAPA — '+esc(mat.corto)+'</h1><div class="meta">'+meta+'</div>';
+  h+='<table class="res"><tr><th>Corte</th><th>Nombre</th><th>Desarrollo × Largo (mm)</th><th>Pliegues</th><th>Cantidad</th></tr>';
+  S.piezas.forEach((p,i)=>{
+    h+='<tr><td>N°'+(i+1)+'</td><td>'+esc(p.nombre)+'</td><td>'+fmt(desarrollo(p))+' × '+fmt(num(p.largo))+'</td><td>'+(p.segs.length-1)+'</td><td>'+fmt(num(p.cant,1))+'</td></tr>';
+  });
+  h+='</table>';
+  if(pack.sheets.length){
+    const usoTotal=pack.sheets.reduce((a,s)=>a+s.uso,0)/pack.sheets.length;
+    h+='<p style="font-size:13px;margin-top:14px">Chapas necesarias: <b>'+pack.sheets.length+'</b> de '+ch.label+' &nbsp;·&nbsp; Aprovechamiento promedio: <b>'+Math.round(usoTotal*100)+'%</b></p>';
+  }
+  h+='<p style="font-size:11px;color:#666;margin-top:8px">Cotas de plegado directo, sin descuento. Pestaña mínima '+LIMITES.pestanaMin+' mm · Plegado máximo '+(LIMITES.plegadoMax/1000)+' m.</p>';
+  h+='<div class="foot">Plegados · '+esc(S.obra||'')+' · '+fechaLegible()+'</div></div>';
+
+  // Una página por chapa
+  pack.sheets.forEach((s,i)=>{
+    h+='<div class="pg"><h1>PLEGADO DE CHAPA LISA '+ch.label.replace(' × ','X')+'</h1>'+
+       '<h2>CHAPA N°'+(i+1)+'</h2><div class="meta">'+meta+'</div>'+
+       '<div style="text-align:center">'+sheetSVG(s,300).replace('width="300"','width="420"')+'</div>'+
+       '<p style="font-size:12px;color:#444">Aprovechamiento de esta chapa: '+Math.round(s.uso*100)+'%. Medidas interiores en mm (desarrollo × largo).</p>'+
+       '<div class="foot">Plegados · '+esc(S.obra||'')+' · '+fechaLegible()+'</div></div>';
+  });
+
+  // Una página por corte
+  S.piezas.forEach((p,i)=>{
+    h+='<div class="pg"><h2>CORTE N°'+(i+1)+' — '+esc(p.nombre).toUpperCase()+'</h2>'+
+       '<div class="meta">Cantidad: <b>'+fmt(num(p.cant,1))+'</b> &nbsp;·&nbsp; Largo: <b>'+fmt(num(p.largo))+' mm</b> &nbsp;·&nbsp; Desarrollo: <b>'+fmt(desarrollo(p))+' mm</b> &nbsp;·&nbsp; '+esc(matSel().label)+'</div>'+
+       '<div>'+isoSVG(p,700,430)+'</div>'+
+       '<p style="font-size:11px;color:#666;margin:10px 0 4px;text-transform:uppercase;letter-spacing:.5px">Perfil — cotas de plegado en mm (sin descuento)</p>'+
+       '<div>'+perfilSVG(p,700,300)+'</div>'+
+       '<div class="foot">Plegados · '+esc(S.obra||'')+' · '+fechaLegible()+'</div></div>';
+  });
+
+  el('printArea').innerHTML=h;
+}
+
+/* ================= exportar / importar ================= */
+function exportar(){
+  const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=(S.obra?S.obra.replace(/[^\wáéíóúñ -]/gi,''):'trabajo')+'.plegados.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function importar(file){
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const j=JSON.parse(r.result);
+      if(!j||!Array.isArray(j.piezas)) throw 0;
+      S=j; S.sel=Math.min(S.sel||0,S.piezas.length-1);
+      save(); renderAll();
+    }catch(e){ alert('El archivo no es un trabajo válido de Plegados.'); }
+  };
+  r.readAsText(file);
+}
+
+/* ================= eventos ================= */
+document.body.addEventListener('click',ev=>{
+  const b=ev.target.closest('[data-act]');
+  if(!b) return;
+  const act=b.dataset.act;
+  if(act==='sel-pieza'){ S.sel=+b.dataset.i; save(); renderLista(); renderEditor(); }
+  else if(act==='add-pieza'){ S.piezas.push(piezaNueva('Corte '+(S.piezas.length+1))); S.sel=S.piezas.length-1; save(); renderLista(); renderEditor(); renderPlan(); }
+  else if(act==='dup-pieza'){ const p=S.piezas[S.sel]; if(!p)return; const c=JSON.parse(JSON.stringify(p)); c.id=Date.now(); c.nombre=p.nombre+' (copia)'; S.piezas.splice(S.sel+1,0,c); S.sel++; save(); renderLista(); renderEditor(); renderPlan(); }
+  else if(act==='del-pieza'){ const p=S.piezas[S.sel]; if(!p)return; if(!confirm('¿Eliminar el corte «'+p.nombre+'»?'))return; S.piezas.splice(S.sel,1); S.sel=Math.max(0,S.sel-1); save(); renderLista(); renderEditor(); renderPlan(); }
+  else if(act==='add-seg'){ const p=S.piezas[S.sel]; if(!p)return; p.segs.push({len:30,ang:90,dir:'arriba'}); save(); renderEditor(); renderPlan(); }
+  else if(act==='del-seg'){ const p=S.piezas[S.sel]; if(!p)return; p.segs.splice(+b.dataset.i,1); if(p.segs.length){delete p.segs[0].ang; delete p.segs[0].dir;} save(); renderEditor(); renderPlan(); }
+  else if(act==='pdf'){ buildPrint(); setTimeout(()=>window.print(),60); }
+  else if(act==='exportar'){ exportar(); }
+  else if(act==='importar'){ el('fileImport').click(); }
+  else if(act==='nuevo'){ if(confirm('¿Empezar un trabajo nuevo? El actual queda en el último archivo exportado.')){ S=trabajoNuevo(); save(); renderAll(); } }
+});
+
+el('fileImport').addEventListener('change',ev=>{
+  if(ev.target.files[0]) importar(ev.target.files[0]);
+  ev.target.value='';
+});
+
+document.body.addEventListener('input',ev=>{
+  const t=ev.target;
+  if(t.id==='f_obra'){S.obra=t.value;} else if(t.id==='f_cliente'){S.cliente=t.value;}
+  else if(t.id==='f_fecha'){S.fecha=t.value;}
+  else if(t.dataset.f){
+    const p=S.piezas[S.sel]; if(!p)return;
+    if(t.dataset.f==='nombre') p.nombre=t.value;
+    else p[t.dataset.f]=parseFloat(t.value)||0;
+    renderLista(); renderPreviews(); renderPlan();
+  }
+  else if(t.dataset.sf){
+    const p=S.piezas[S.sel]; if(!p)return;
+    const sg=p.segs[+t.dataset.i]; if(!sg)return;
+    if(t.dataset.sf==='dir') sg.dir=t.value; else sg[t.dataset.sf]=parseFloat(t.value)||0;
+    renderPreviews(); renderPlan();
+  } else return;
+  save();
+});
+document.body.addEventListener('change',ev=>{
+  const t=ev.target;
+  if(t.id==='f_material'){ S.material=t.value; save(); renderPlan(); }
+  else if(t.id==='f_chapa'){ S.chapa=t.value; save(); renderPreviews(); renderPlan(); }
+  else if(t.dataset.sf==='dir'){ const p=S.piezas[S.sel]; if(!p)return; p.segs[+t.dataset.i].dir=t.value; save(); renderPreviews(); renderPlan(); }
+});
+
+renderAll();
+</script>
+</body>
+</html>
