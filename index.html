@@ -164,7 +164,7 @@
   <section class="card">
     <h2>Plan de corte</h2>
     <div id="plan"></div>
-    <p class="hint" style="margin-bottom:0">La distribución minimiza el desperdicio con cortes rectos de guillotina. Todas las cotas son de plegado directo, sin descuento.</p>
+    <p class="hint" style="margin-bottom:0">La distribución mezcla todos los cortes y prueba cientos de combinaciones para minimizar el desperdicio, siempre con cortes rectos de guillotina. Todas las cotas son de plegado directo, sin descuento.</p>
   </section>
 </main>
 
@@ -370,49 +370,231 @@ function isoSVG(p, W, H){
 }
 
 /* ================= optimización: empaquetado guillotina ================= */
-function packRects(items, W, H){
-  // items: {w,h,k,nombre}. Cortes de guillotina, con rotación. BSSF greedy.
-  const rem=items.slice();
-  const sinLugar=rem.filter(r=>!((r.w<=W&&r.h<=H)||(r.h<=W&&r.w<=H)));
-  if(sinLugar.length) return {sheets:[], sinLugar};
-  const sheets=[];
-  while(rem.length){
-    const free=[{x:0,y:0,w:W,h:H}];
-    const placed=[];
-    for(;;){
-      let best=null;
-      for(let ri=0;ri<rem.length;ri++){
-        const r=rem[ri];
-        const orients = r.w===r.h ? [false] : [false,true];
-        for(const rot of orients){
-          const w=rot?r.h:r.w, h=rot?r.w:r.h;
-          for(let fi=0;fi<free.length;fi++){
-            const f=free[fi];
-            if(w<=f.w&&h<=f.h){
-              const score=Math.min(f.w-w,f.h-h);
-              if(!best||score<best.score) best={ri,fi,rot,w,h,score};
-            }
-          }
-        }
+// Prueba muchas estrategias distintas (orden de las piezas, regla de encaje, sentido del
+// corte, fajas armadas con "mochila") mezclando libremente todos los cortes, y se queda con
+// la que usa menos chapas y deja el sobrante concentrado en la última (retazo aprovechable).
+// Todas las soluciones son de cortes rectos de guillotina, con rotación de piezas.
+const EPS=0.01;
+
+// regla de encaje: menor puntaje = mejor lugar para la pieza
+function fitScore(rule,w,h,f){
+  const dw=f.w-w, dh=f.h-h;
+  const exact=(dw<EPS?1:0)+(dh<EPS?1:0); // premia encajes justos
+  let s;
+  if(rule==='blsf') s=Math.max(dw,dh)*1e4+Math.min(dw,dh);
+  else if(rule==='baf') s=(f.w*f.h-w*h)*1e4+Math.min(dw,dh);
+  else s=Math.min(dw,dh)*1e4+Math.max(dw,dh); // bssf
+  return s-exact*1e13;
+}
+// corte de guillotina del hueco libre después de ubicar una pieza w×h en su esquina
+function splitFree(f,w,h,rule){
+  w=Math.min(w,f.w); h=Math.min(h,f.h);
+  const rw=f.w-w, rh=f.h-h;
+  let hor;
+  if(rule==='las') hor=rw>=rh;
+  else if(rule==='hor') hor=true;
+  else if(rule==='ver') hor=false;
+  else if(rule==='maxa') hor=Math.max(rw*h,f.w*rh)>=Math.max(rw*f.h,w*rh);
+  else if(rule==='mina') hor=Math.max(rw*h,f.w*rh)<Math.max(rw*f.h,w*rh);
+  else hor=rw<rh; // sas
+  const out=hor ? [{x:f.x+w,y:f.y,w:rw,h:h},{x:f.x,y:f.y+h,w:f.w,h:rh}]
+                : [{x:f.x+w,y:f.y,w:rw,h:f.h},{x:f.x,y:f.y+h,w:w,h:rh}];
+  return out.filter(r=>r.w>0.5&&r.h>0.5);
+}
+function bestSpot(free,r,rule){
+  let best=null;
+  const nOr=Math.abs(r.w-r.h)<EPS?1:2;
+  for(let fi=0;fi<free.length;fi++){
+    const f=free[fi];
+    for(let o=0;o<nOr;o++){
+      const w=o?r.h:r.w, h=o?r.w:r.h;
+      if(w<=f.w+EPS&&h<=f.h+EPS){
+        const s=fitScore(rule,w,h,f);
+        if(!best||s<best.score) best={fi,w,h,score:s};
       }
-      if(!best) break;
-      const f=free[best.fi], r=rem[best.ri];
-      placed.push({x:f.x,y:f.y,w:best.w,h:best.h,k:r.k,nombre:r.nombre});
-      rem.splice(best.ri,1);
-      free.splice(best.fi,1);
-      const rw=f.w-best.w, rh=f.h-best.h;
-      let r1,r2;
-      if(rw<rh){ r1={x:f.x+best.w,y:f.y,w:rw,h:best.h}; r2={x:f.x,y:f.y+best.h,w:f.w,h:rh}; }
-      else     { r1={x:f.x+best.w,y:f.y,w:rw,h:f.h};    r2={x:f.x,y:f.y+best.h,w:best.w,h:rh}; }
-      if(r1.w>0.5&&r1.h>0.5) free.push(r1);
-      if(r2.w>0.5&&r2.h>0.5) free.push(r2);
     }
-    if(!placed.length) break;
-    sheets.push({placed, uso: placed.reduce((a,q)=>a+q.w*q.h,0)/(W*H)});
   }
-  return {sheets, sinLugar:[]};
+  return best;
+}
+function place(free,placed,fi,w,h,r,split){
+  const f=free[fi]; free.splice(fi,1);
+  placed.push({x:f.x,y:f.y,w,h,k:r.k,nombre:r.nombre});
+  free.push(...splitFree(f,w,h,split));
+}
+// llena los huecos eligiendo en cada paso la mejor combinación pieza/hueco entre TODAS las piezas
+function fillGreedy(free,rem,placed,rule,split,big){
+  for(;;){
+    let best=null; const seen=new Set();
+    for(let ri=0;ri<rem.length;ri++){
+      const r=rem[ri], key=r.w+'x'+r.h;
+      if(seen.has(key)) continue; seen.add(key);
+      const b=bestSpot(free,r,rule);
+      if(!b) continue;
+      const a=r.w*r.h;
+      if(!best || (big ? (a>best.a+EPS || (Math.abs(a-best.a)<=EPS && b.score<best.score)) : b.score<best.score)){
+        best=b; best.ri=ri; best.a=a;
+      }
+    }
+    if(!best) return;
+    const r=rem.splice(best.ri,1)[0];
+    place(free,placed,best.fi,best.w,best.h,r,split);
+  }
+}
+// estrategia 1: chapa por chapa, mejor encaje global
+function packGlobal(items,W,H,rule,split,big){
+  const rem=items.slice(), sheets=[];
+  while(rem.length){
+    const free=[{x:0,y:0,w:W,h:H}], placed=[];
+    fillGreedy(free,rem,placed,rule,split,big);
+    if(!placed.length) break;
+    sheets.push(placed);
+  }
+  return sheets;
+}
+// estrategia 2: piezas en un orden dado, cada una al mejor hueco de cualquier chapa abierta
+function packOrder(order,W,H,rule,split){
+  const sh=[];
+  for(const r of order){
+    let best=null;
+    for(let si=0;si<sh.length;si++){
+      const b=bestSpot(sh[si].free,r,rule);
+      if(b&&(!best||b.score<best.score)){ best=b; best.si=si; }
+    }
+    if(!best){
+      sh.push({free:[{x:0,y:0,w:W,h:H}],placed:[]});
+      best=bestSpot(sh[sh.length-1].free,r,rule);
+      if(!best) continue;
+      best.si=sh.length-1;
+    }
+    const s=sh[best.si];
+    place(s.free,s.placed,best.fi,best.w,best.h,r,split);
+  }
+  return sh.map(s=>s.placed);
+}
+// mochila 0/1: qué piezas llenan mejor una faja de largo A
+function knapsack(opts,A){
+  const C=Math.floor(A+EPS), n=opts.length, C1=C+1;
+  const dp=new Float64Array(C1), keep=new Uint8Array(n*C1);
+  const wt=opts.map(o=>Math.max(1,Math.ceil(o.la-EPS)));
+  for(let i=0;i<n;i++){
+    const wi=wt[i], vi=opts[i].la*opts[i].lb;
+    if(wi>C) continue;
+    for(let c=C;c>=wi;c--){
+      const v=dp[c-wi]+vi;
+      if(v>dp[c]+1e-9){ dp[c]=v; keep[i*C1+c]=1; }
+    }
+  }
+  const sel=[]; let c=C;
+  for(let i=n-1;i>=0;i--) if(keep[i*C1+c]){ sel.push(opts[i]); c-=wt[i]; }
+  return sel;
+}
+// estrategia 3: arma la chapa en fajas (como se corta en la guillotina) mezclando piezas
+// que juntas completen el ancho; después rellena los huecos que quedan con lo que sobra
+function stripSheet(rem,W,H,dir,mode){
+  const A=dir?H:W, B=dir?W:H;
+  rem=rem.slice();
+  const loc=[], free=[]; let b0=0;
+  for(;;){
+    const Bl=B-b0, ts=new Set();
+    for(const r of rem) for(const [la,lb] of [[r.w,r.h],[r.h,r.w]]) if(lb<=Bl+EPS&&la<=A+EPS) ts.add(lb);
+    if(!ts.size) break;
+    let cands=[...ts].sort((a,b)=>b-a);
+    if(mode==='alto') cands=cands.slice(0,1);
+    let best=null;
+    for(const t of cands){
+      let opts=[];
+      rem.forEach((r,ri)=>{
+        let o=null;
+        for(const [la,lb] of [[r.w,r.h],[r.h,r.w]]) if(lb<=t+EPS&&la<=A+EPS&&(!o||lb>o.lb)) o={ri,la,lb};
+        if(o) opts.push(o);
+      });
+      if(opts.length>80){ opts.sort((a,b)=>b.la*b.lb-a.la*a.lb); opts=opts.slice(0,80); }
+      const sel=knapsack(opts,A);
+      if(!sel.length) continue;
+      const val=sel.reduce((s,o)=>s+o.la*o.lb,0), tr=Math.max(...sel.map(o=>o.lb));
+      const sc=val/(A*tr);
+      if(!best||sc>best.sc+1e-9||(Math.abs(sc-best.sc)<=1e-9&&val>best.val)) best={sel,tr,val,sc};
+    }
+    if(!best) break;
+    let a=0;
+    for(const o of best.sel){
+      loc.push({x:a,y:b0,w:o.la,h:o.lb,k:rem[o.ri].k,nombre:rem[o.ri].nombre});
+      if(best.tr-o.lb>0.5) free.push({x:a,y:b0+o.lb,w:o.la,h:best.tr-o.lb});
+      a+=o.la;
+    }
+    if(A-a>0.5) free.push({x:a,y:b0,w:A-a,h:best.tr});
+    best.sel.map(o=>o.ri).sort((x,y)=>y-x).forEach(i=>rem.splice(i,1));
+    b0+=best.tr;
+  }
+  if(B-b0>0.5) free.push({x:0,y:b0,w:A,h:B-b0});
+  fillGreedy(free,rem,loc,'bssf','sas',true);
+  const placed=dir ? loc.map(q=>({x:q.y,y:q.x,w:q.h,h:q.w,k:q.k,nombre:q.nombre})) : loc;
+  return {placed,rem};
+}
+function packStrips(items,W,H){
+  let rem=items.slice(); const sheets=[];
+  while(rem.length){
+    let best=null;
+    for(const dir of [0,1]) for(const mode of ['alto','ratio']){
+      const s=stripSheet(rem,W,H,dir,mode);
+      const area=s.placed.reduce((a,q)=>a+q.w*q.h,0);
+      if(s.placed.length&&(!best||area>best.area+EPS)) best={placed:s.placed,rem:s.rem,area};
+    }
+    if(!best) break;
+    sheets.push(best.placed); rem=best.rem;
+  }
+  return sheets;
 }
 
+function rng(seed){ return ()=>{ seed|=0; seed=seed+0x6D2B79F5|0; let t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+
+function packRects(items, W, H){
+  // items: {w,h,k,nombre}
+  const sinLugar=items.filter(r=>!((r.w<=W+EPS&&r.h<=H+EPS)||(r.h<=W+EPS&&r.w<=H+EPS)));
+  if(sinLugar.length) return {sheets:[], sinLugar, minimo:0};
+  const total=items.reduce((a,r)=>a+r.w*r.h,0);
+  const minimo=Math.ceil(total/(W*H)-1e-9);
+  if(!items.length) return {sheets:[], sinLugar:[], minimo:0};
+
+  let best=null;
+  const consider=sheets=>{
+    if(sheets.reduce((a,s)=>a+s.length,0)!==items.length) return; // por seguridad
+    const n=sheets.length;
+    const q=sheets.reduce((a,s)=>{ const u=s.reduce((b,r)=>b+r.w*r.h,0)/(W*H); return a+u*u; },0);
+    if(!best||n<best.n||(n===best.n&&q>best.q+1e-9)) best={n,q,sheets};
+  };
+  const RULES=['bssf','blsf','baf'], SPLITS=['sas','las','maxa','mina','hor','ver'];
+
+  consider(packStrips(items,W,H));
+  for(const ru of RULES) for(const sp of SPLITS){
+    consider(packGlobal(items,W,H,ru,sp,false));
+    consider(packGlobal(items,W,H,ru,sp,true));
+  }
+  const key=[ r=>r.w*r.h, r=>Math.max(r.w,r.h), r=>r.w, r=>r.h, r=>r.w+r.h ];
+  const orders=key.map(f=>items.slice().sort((a,b)=>f(b)-f(a)));
+  for(const o of orders) for(const ru of RULES) for(const sp of SPLITS) consider(packOrder(o,W,H,ru,sp));
+
+  // búsqueda aleatoria (semilla fija: mismo trabajo => mismo plan)
+  const rnd=rng(items.length*7919+Math.round(total));
+  const iters=Math.max(60,Math.min(800,Math.round(40000/items.length)));
+  const t0=Date.now();
+  for(let it=0; it<iters && Date.now()-t0<400; it++){
+    if(best.n===minimo && best.q>=best.n-1+Math.pow(total/(W*H)-(best.n-1),2)-1e-9) break; // ya es óptimo
+    const ord=orders[Math.floor(rnd()*orders.length)].slice();
+    const sw=1+Math.floor(rnd()*Math.max(1,ord.length/3));
+    for(let s=0;s<sw;s++){
+      const i=Math.floor(rnd()*ord.length), j=Math.min(ord.length-1,i+1+Math.floor(rnd()*4));
+      const t=ord[i]; ord[i]=ord[j]; ord[j]=t;
+    }
+    consider(packOrder(ord,W,H,RULES[Math.floor(rnd()*3)],SPLITS[Math.floor(rnd()*6)]));
+  }
+
+  const sheets=best.sheets.map(placed=>({placed, uso:placed.reduce((a,q)=>a+q.w*q.h,0)/(W*H)}))
+    .sort((a,b)=>b.uso-a.uso);
+  return {sheets, sinLugar:[], minimo};
+}
+
+let planKey=null;
 function calcularPlan(){
   const ch=chapaSel();
   const items=[];
@@ -422,6 +604,9 @@ function calcularPlan(){
     for(let c=0;c<Math.max(1,Math.round(num(p.cant,1)));c++)
       items.push({w:dev,h:largo,k:idx+1,nombre:p.nombre});
   });
+  const key=JSON.stringify([ch.w,ch.h,items.map(r=>[r.w,r.h,r.k])]);
+  if(key===planKey && lastPack) return lastPack;
+  planKey=key;
   lastPack = packRects(items, ch.w, ch.h);
   return lastPack;
 }
@@ -521,6 +706,10 @@ function renderPlan(){
   if(!pack.sheets.length){ el('plan').innerHTML='<p class="hint">Cargá al menos un corte con medidas para ver el plan.</p>'; return; }
   const usoTotal=pack.sheets.reduce((a,s)=>a+s.uso,0)/pack.sheets.length;
   h+='<div class="plan-stats">Chapas de '+ch.label+' necesarias: <b>'+pack.sheets.length+'</b> &nbsp;·&nbsp; Aprovechamiento: <b>'+Math.round(usoTotal*100)+'%</b> &nbsp;·&nbsp; Desperdicio: <b>'+Math.round((1-usoTotal)*100)+'%</b></div>';
+  h+='<p class="hint" style="margin-top:-6px">'+(pack.sheets.length<=pack.minimo
+      ? '✓ Es la menor cantidad de chapas posible para esta superficie de cortes.'
+      : 'Por superficie, el mínimo teórico sería '+pack.minimo+' chapa'+(pack.minimo===1?'':'s')+' (las medidas de las piezas no permiten llegar a ese número sin cortarlas).')+
+     (pack.sheets.length>1?' El sobrante queda concentrado en la última chapa.':'')+'</p>';
   h+='<div class="sheets">'+pack.sheets.map((s,i)=>
     '<figure class="sheet-fig"><figcaption>CHAPA N°'+(i+1)+' <span class="waste">· aprovechamiento '+Math.round(s.uso*100)+'%</span></figcaption>'+sheetSVG(s,230)+'</figure>'
   ).join('')+'</div>';
@@ -528,6 +717,9 @@ function renderPlan(){
 }
 
 function renderAll(){ renderDatos(); renderLista(); renderEditor(); renderPlan(); }
+// mientras se escribe, recalcula el plan al dejar de tipear (el optimizador prueba muchas variantes)
+let planTimer=null;
+function planPronto(){ clearTimeout(planTimer); planTimer=setTimeout(renderPlan,250); }
 
 /* ================= impresión / PDF ================= */
 function fechaLegible(){
@@ -628,13 +820,13 @@ document.body.addEventListener('input',ev=>{
     const p=S.piezas[S.sel]; if(!p)return;
     if(t.dataset.f==='nombre') p.nombre=t.value;
     else p[t.dataset.f]=parseFloat(t.value)||0;
-    renderLista(); renderPreviews(); renderPlan();
+    renderLista(); renderPreviews(); planPronto();
   }
   else if(t.dataset.sf){
     const p=S.piezas[S.sel]; if(!p)return;
     const sg=p.segs[+t.dataset.i]; if(!sg)return;
     if(t.dataset.sf==='dir') sg.dir=t.value; else sg[t.dataset.sf]=parseFloat(t.value)||0;
-    renderPreviews(); renderPlan();
+    renderPreviews(); planPronto();
   } else return;
   save();
 });
