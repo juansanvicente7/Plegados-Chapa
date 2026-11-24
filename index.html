@@ -84,6 +84,12 @@
   .sheet-fig svg{display:block}
 
   .hint{font-size:12px;color:var(--soft)}
+  .sobrante{border:1px solid #ecd9b8;background:#fdf8ee;border-radius:8px;padding:10px 12px;margin:0 0 14px;font-size:13px}
+  .sobrante table{border-collapse:collapse;margin:6px 0;font-size:13px}
+  .sobrante th{font-size:11px;color:var(--soft);text-align:left;font-weight:600;padding:2px 14px 2px 0}
+  .sobrante td{padding:2px 14px 2px 0}
+  .sobrante p{margin:4px 0 0;color:#5b4a2c}
+  @media print{ .sobrante{border:1px solid #999;background:#fff} }
 
   .seg-wrap{overflow-x:auto}
 
@@ -546,6 +552,96 @@ function packStrips(items,W,H){
   return sheets;
 }
 
+// ¿entran estas fajas (anchos ordenados de mayor a menor) en n chapas de ancho C?
+// búsqueda exacta con poda; devuelve el número de chapa de cada faja, o null
+function fajasEnChapas(sizes,n,C,deadline){
+  const N=sizes.length, cap=new Array(n).fill(C), asg=new Array(N);
+  const slack=n*C-sizes.reduce((a,x)=>a+x,0);
+  if(slack<-EPS) return null;
+  const minSize=sizes[N-1];
+  let nodes=0, cortado=false;
+  const go=i=>{
+    if(i===N) return true;
+    if((++nodes&1023)===0 && Date.now()>deadline){ cortado=true; }
+    if(cortado) return false;
+    const start=(i>0&&Math.abs(sizes[i]-sizes[i-1])<EPS)?asg[i-1]:0;
+    const tried=[];
+    for(let j=start;j<n;j++){
+      if(cap[j]+EPS<sizes[i]) continue;
+      if(tried.some(c=>Math.abs(c-cap[j])<EPS)) continue;
+      tried.push(cap[j]);
+      cap[j]-=sizes[i]; asg[i]=j;
+      let dead=0; for(let b=0;b<n;b++) if(cap[b]+EPS<minSize) dead+=cap[b];
+      if(dead<=slack+EPS && go(i+1)) return true;
+      cap[j]+=sizes[i];
+    }
+    return false;
+  };
+  return go(0) ? asg.slice() : null;
+}
+
+// estrategia 4: cada corte es una faja a lo largo de la chapa (como se trabaja en zinguería).
+// Busca la menor cantidad de chapas y que la última lleve lo mínimo posible,
+// así las demás quedan llenas y el sobrante es un solo retazo grande.
+function packFajas(items,W,H,deadline){
+  const L=Math.max(W,H), A=Math.min(W,H);
+  const fj=[];
+  for(const r of items){
+    const a=Math.min(r.w,r.h), b=Math.max(r.w,r.h);
+    if(a>A+EPS||b>L+EPS) return null;
+    fj.push({r,a,b});
+  }
+  fj.sort((x,y)=>y.a-x.a);
+  const sizes=fj.map(f=>f.a), total=sizes.reduce((s,x)=>s+x,0);
+  // cantidad mínima de chapas
+  let n=Math.max(1,Math.ceil(total/A-1e-9)), asg=null;
+  for(;n<=fj.length;n++){ asg=fajasEnChapas(sizes,n,A,deadline); if(asg) break; if(Date.now()>deadline) return null; }
+  if(!asg) return null;
+  let bins=Array.from({length:n},()=>[]);
+  asg.forEach((j,i)=>bins[j].push(i));
+  // concentrar el sobrante: la última chapa lleva lo mínimo posible; con lo que queda se
+  // repite lo mismo para la anteúltima, y así. Las primeras quedan lo más llenas posible
+  // y el desperdicio se junta en la menor cantidad de chapas.
+  const concentrar=(idx,m)=>{
+    if(m<=1) return [idx.slice()];
+    const tot=idx.reduce((s,i)=>s+sizes[i],0);
+    const tipos=[];
+    idx.forEach(i=>{ const t=tipos.find(t=>Math.abs(t.s-sizes[i])<EPS); if(t) t.idx.push(i); else tipos.push({s:sizes[i],idx:[i]}); });
+    const minUlt=tot-(m-1)*A, combos=[];
+    const rec=(ti,sum,pick)=>{
+      if(combos.length>4000) return;
+      if(ti===tipos.length){ if(sum>=minUlt-EPS && pick.length) combos.push({sum,pick:pick.slice()}); return; }
+      const t=tipos[ti];
+      for(let c=0;c<=t.idx.length && sum+c*t.s<=A+EPS;c++){
+        for(let k=0;k<c;k++) pick.push(t.idx[k]);
+        rec(ti+1,sum+c*t.s,pick);
+        pick.length-=c;
+      }
+    };
+    rec(0,0,[]);
+    combos.sort((x,y)=>x.sum-y.sum);
+    for(const cb of combos){
+      if(Date.now()>deadline) return null;
+      const fuera=new Set(cb.pick);
+      const resto=idx.filter(i=>!fuera.has(i));
+      if(fajasEnChapas(resto.map(i=>sizes[i]),m-1,A,deadline)){
+        const r=concentrar(resto,m-1);
+        return r ? r.concat([cb.pick.slice()]) : null;
+      }
+    }
+    return null;
+  };
+  if(n>1){ const c=concentrar(sizes.map((_,i)=>i),n); if(c) bins=c; }
+  return bins.map(b=>{
+    let acc=0;
+    return b.map(i=>{
+      const f=fj[i], q = H>=W ? {x:acc,y:0,w:f.a,h:f.b} : {x:0,y:acc,w:f.b,h:f.a};
+      acc+=f.a;
+      return Object.assign(q,{k:f.r.k,nombre:f.r.nombre});
+    });
+  });
+}
+
 function rng(seed){ return ()=>{ seed|=0; seed=seed+0x6D2B79F5|0; let t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
 
 function packRects(items, W, H){
@@ -565,6 +661,8 @@ function packRects(items, W, H){
   };
   const RULES=['bssf','blsf','baf'], SPLITS=['sas','las','maxa','mina','hor','ver'];
 
+  const fajas=packFajas(items,W,H,Date.now()+600);
+  if(fajas) consider(fajas);
   consider(packStrips(items,W,H));
   for(const ru of RULES) for(const sp of SPLITS){
     consider(packGlobal(items,W,H,ru,sp,false));
@@ -694,6 +792,42 @@ function renderPreviews(){
   av.innerHTML=avisosPieza(p).map(a=>'<div class="'+a.t+'">'+(a.t==='e'?'✖ ':'⚠ ')+esc(a.m)+'</div>').join('');
 }
 
+/* ================= sobrante ================= */
+const RETAZO_MIN=50; // mm: franjas más angostas se consideran recorte no aprovechable
+function m2(a){ return (a/1e6).toFixed(2).replace('.',','); }
+// franjas libres a todo lo largo de la chapa (retazos) y el resto del desperdicio
+function sobranteChapa(sheet){
+  const ch=chapaSel(), vert=ch.h>=ch.w, A=vert?ch.w:ch.h, L=vert?ch.h:ch.w;
+  const iv=sheet.placed.map(q=>vert?[q.x,q.x+q.w]:[q.y,q.y+q.h]).sort((a,b)=>a[0]-b[0]);
+  const franjas=[]; let cur=0;
+  for(const [a,b] of iv){ if(a-cur>0.5) franjas.push(a-cur); cur=Math.max(cur,b); }
+  if(A-cur>0.5) franjas.push(A-cur);
+  const area=Math.max(0,ch.w*ch.h-sheet.placed.reduce((s,q)=>s+q.w*q.h,0));
+  const retazos=franjas.filter(f=>f>=RETAZO_MIN);
+  const areaRetazos=retazos.reduce((s,f)=>s+f*L,0);
+  return {L, retazos, area, recortes:Math.max(0,area-areaRetazos)};
+}
+function textoSobranteChapa(sheet){
+  const sb=sobranteChapa(sheet);
+  return sb.retazos.length ? 'sobrante '+sb.retazos.map(f=>fmt(f)+' × '+fmt(sb.L)).join(' + ')+' mm' : '';
+}
+function resumenSobrante(pack){
+  const ch=chapaSel();
+  const filas=[]; let totRet=0, totRec=0;
+  pack.sheets.forEach((s,i)=>{
+    const sb=sobranteChapa(s);
+    sb.retazos.forEach(f=>{ filas.push('<tr><td>Chapa N°'+(i+1)+'</td><td><b>'+fmt(f)+' × '+fmt(sb.L)+' mm</b></td><td>'+m2(f*sb.L)+' m²</td></tr>'); totRet+=f*sb.L; });
+    totRec+=sb.recortes;
+  });
+  const comprado=ch.w*ch.h*pack.sheets.length;
+  let h='<div class="sobrante"><b>Sobrante para usar en obra</b>';
+  h+= filas.length
+    ? '<table><tr><th>Dónde</th><th>Retazo</th><th>Superficie</th></tr>'+filas.join('')+'</table>'
+    : '<p>No queda ningún retazo aprovechable (de '+RETAZO_MIN+' mm o más de ancho).</p>';
+  h+='<p>Retazos aprovechables: <b>'+m2(totRet)+' m²</b> &nbsp;·&nbsp; Recortes chicos (menos de '+RETAZO_MIN+' mm o irregulares): '+m2(totRec)+' m² &nbsp;·&nbsp; Chapa comprada: '+m2(comprado)+' m²</p></div>';
+  return h;
+}
+
 function renderPlan(){
   const pack=calcularPlan();
   const ch=chapaSel();
@@ -710,8 +844,11 @@ function renderPlan(){
       ? '✓ Es la menor cantidad de chapas posible para esta superficie de cortes.'
       : 'Por superficie, el mínimo teórico sería '+pack.minimo+' chapa'+(pack.minimo===1?'':'s')+' (las medidas de las piezas no permiten llegar a ese número sin cortarlas).')+
      (pack.sheets.length>1?' El sobrante queda concentrado en la última chapa.':'')+'</p>';
-  h+='<div class="sheets">'+pack.sheets.map((s,i)=>
-    '<figure class="sheet-fig"><figcaption>CHAPA N°'+(i+1)+' <span class="waste">· aprovechamiento '+Math.round(s.uso*100)+'%</span></figcaption>'+sheetSVG(s,230)+'</figure>'
+  h+=resumenSobrante(pack);
+  h+='<div class="sheets">'+pack.sheets.map((s,i)=>{
+    const t=textoSobranteChapa(s);
+    return '<figure class="sheet-fig"><figcaption>CHAPA N°'+(i+1)+' <span class="waste">· aprovechamiento '+Math.round(s.uso*100)+'%'+(t?'<br>'+t:'')+'</span></figcaption>'+sheetSVG(s,230)+'</figure>';
+  }
   ).join('')+'</div>';
   el('plan').innerHTML=h;
 }
@@ -742,6 +879,7 @@ function buildPrint(){
   if(pack.sheets.length){
     const usoTotal=pack.sheets.reduce((a,s)=>a+s.uso,0)/pack.sheets.length;
     h+='<p style="font-size:13px;margin-top:14px">Chapas necesarias: <b>'+pack.sheets.length+'</b> de '+ch.label+' &nbsp;·&nbsp; Aprovechamiento promedio: <b>'+Math.round(usoTotal*100)+'%</b></p>';
+    h+=resumenSobrante(pack);
   }
   h+='<p style="font-size:11px;color:#666;margin-top:8px">Cotas de plegado directo, sin descuento. Pestaña mínima '+LIMITES.pestanaMin+' mm · Plegado máximo '+(LIMITES.plegadoMax/1000)+' m.</p>';
   h+='<div class="foot">Plegados · '+esc(S.obra||'')+' · '+fechaLegible()+'</div></div>';
@@ -751,7 +889,7 @@ function buildPrint(){
     h+='<div class="pg"><h1>PLEGADO DE CHAPA LISA '+ch.label.replace(' × ','X')+'</h1>'+
        '<h2>CHAPA N°'+(i+1)+'</h2><div class="meta">'+meta+'</div>'+
        '<div style="text-align:center">'+sheetSVG(s,300).replace('width="300"','width="420"')+'</div>'+
-       '<p style="font-size:12px;color:#444">Aprovechamiento de esta chapa: '+Math.round(s.uso*100)+'%. Medidas interiores en mm (desarrollo × largo).</p>'+
+       '<p style="font-size:12px;color:#444">Aprovechamiento de esta chapa: '+Math.round(s.uso*100)+'%.'+(textoSobranteChapa(s)?' <b>'+textoSobranteChapa(s).replace('sobrante','Sobrante:')+'</b>.':'')+' Medidas interiores en mm (desarrollo × largo).</p>'+
        '<div class="foot">Plegados · '+esc(S.obra||'')+' · '+fechaLegible()+'</div></div>';
   });
 
