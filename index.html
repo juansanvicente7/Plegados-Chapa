@@ -83,9 +83,6 @@
   .sheet-fig .waste{color:var(--soft);font-weight:400}
   .sheet-fig svg{display:block}
   .sheets .sheet-fig{flex:1 1 460px;max-width:620px}
-  .leyenda{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;margin:0 0 12px}
-  .leyenda span{display:inline-flex;align-items:center;gap:5px}
-  .leyenda i,.pieza-item .dot{display:inline-block;width:11px;height:11px;border-radius:3px;flex:none}
 
   .hint{font-size:12px;color:var(--soft)}
 
@@ -550,6 +547,94 @@ function packStrips(items,W,H){
   return sheets;
 }
 
+// ¿entran estas fajas (anchos ordenados de mayor a menor) en n chapas de ancho C?
+// búsqueda exacta con poda; devuelve el número de chapa de cada faja, o null
+function fajasEnChapas(sizes,n,C,deadline){
+  const N=sizes.length, cap=new Array(n).fill(C), asg=new Array(N);
+  const slack=n*C-sizes.reduce((a,x)=>a+x,0);
+  if(slack<-EPS) return null;
+  const minSize=sizes[N-1];
+  let nodes=0, cortado=false;
+  const go=i=>{
+    if(i===N) return true;
+    if((++nodes&1023)===0 && Date.now()>deadline){ cortado=true; }
+    if(cortado) return false;
+    const start=(i>0&&Math.abs(sizes[i]-sizes[i-1])<EPS)?asg[i-1]:0;
+    const tried=[];
+    for(let j=start;j<n;j++){
+      if(cap[j]+EPS<sizes[i]) continue;
+      if(tried.some(c=>Math.abs(c-cap[j])<EPS)) continue;
+      tried.push(cap[j]);
+      cap[j]-=sizes[i]; asg[i]=j;
+      let dead=0; for(let b=0;b<n;b++) if(cap[b]+EPS<minSize) dead+=cap[b];
+      if(dead<=slack+EPS && go(i+1)) return true;
+      cap[j]+=sizes[i];
+    }
+    return false;
+  };
+  return go(0) ? asg.slice() : null;
+}
+
+// estrategia 4: cada corte es una faja a lo largo de la chapa (como se trabaja en zinguería).
+// Busca la menor cantidad de chapas y que la última lleve lo mínimo posible,
+// así las demás quedan llenas y el sobrante es un solo retazo grande.
+function packFajas(items,W,H,deadline){
+  const L=Math.max(W,H), A=Math.min(W,H);
+  const fj=[];
+  for(const r of items){
+    const a=Math.min(r.w,r.h), b=Math.max(r.w,r.h);
+    if(a>A+EPS||b>L+EPS) return null;
+    fj.push({r,a,b});
+  }
+  fj.sort((x,y)=>y.a-x.a);
+  const sizes=fj.map(f=>f.a), total=sizes.reduce((s,x)=>s+x,0);
+  // cantidad mínima de chapas
+  let n=Math.max(1,Math.ceil(total/A-1e-9)), asg=null;
+  for(;n<=fj.length;n++){ asg=fajasEnChapas(sizes,n,A,deadline); if(asg) break; if(Date.now()>deadline) return null; }
+  if(!asg) return null;
+  let bins=Array.from({length:n},()=>[]);
+  asg.forEach((j,i)=>bins[j].push(i));
+  // concentrar el sobrante: probar qué poner en la última chapa, de menos a más
+  if(n>1){
+    const tipos=[];
+    sizes.forEach((s,i)=>{ const t=tipos.find(t=>Math.abs(t.s-s)<EPS); if(t) t.idx.push(i); else tipos.push({s,idx:[i]}); });
+    const minUlt=total-(n-1)*A, combos=[];
+    const rec=(ti,sum,pick)=>{
+      if(combos.length>4000) return;
+      if(ti===tipos.length){ if(sum>=minUlt-EPS && pick.length) combos.push({sum,pick:pick.slice()}); return; }
+      const t=tipos[ti];
+      for(let c=0;c<=t.idx.length && sum+c*t.s<=A+EPS;c++){
+        for(let k=0;k<c;k++) pick.push(t.idx[k]);
+        rec(ti+1,sum+c*t.s,pick);
+        pick.length-=c;
+      }
+    };
+    rec(0,0,[]);
+    combos.sort((x,y)=>x.sum-y.sum);
+    const ultActual=Math.min(...bins.map(b=>b.reduce((s,i)=>s+sizes[i],0)));
+    for(const cb of combos){
+      if(cb.sum>=ultActual-EPS || Date.now()>deadline) break;
+      const fuera=new Set(cb.pick);
+      const restoIdx=sizes.map((_,i)=>i).filter(i=>!fuera.has(i));
+      const a2=fajasEnChapas(restoIdx.map(i=>sizes[i]),n-1,A,deadline);
+      if(a2){
+        bins=Array.from({length:n-1},()=>[]);
+        a2.forEach((j,k)=>bins[j].push(restoIdx[k]));
+        bins.push(cb.pick.slice());
+        break;
+      }
+    }
+  }
+  return bins.map(b=>{
+    let acc=0;
+    return b.map(i=>{
+      const f=fj[i], q = H>=W ? {x:acc,y:0,w:f.a,h:f.b} : {x:0,y:acc,w:f.b,h:f.a};
+      acc+=f.a;
+      return Object.assign(q,{k:f.r.k,nombre:f.r.nombre});
+    });
+  });
+}
+
 function rng(seed){ return ()=>{ seed|=0; seed=seed+0x6D2B79F5|0; let t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
 
 function packRects(items, W, H){
@@ -569,6 +654,8 @@ function packRects(items, W, H){
   };
   const RULES=['bssf','blsf','baf'], SPLITS=['sas','las','maxa','mina','hor','ver'];
 
+  const fajas=packFajas(items,W,H,Date.now()+600);
+  if(fajas) consider(fajas);
   consider(packStrips(items,W,H));
   for(const ru of RULES) for(const sp of SPLITS){
     consider(packGlobal(items,W,H,ru,sp,false));
@@ -616,15 +703,7 @@ function calcularPlan(){
 }
 
 /* ================= SVG: chapa con distribución ================= */
-// un color fijo por corte (N°1, N°2…), igual en el plan, la lista y el PDF
-const COLORES=['#4a57a8','#f0692a','#f2e43c','#5bb94c','#9b3f9a','#97989c','#2fa8b8','#d64545','#c49a5a','#7fb8e8','#e58fc0','#3d7d3a'];
-function colorCorte(k){ return COLORES[(k-1)%COLORES.length]; }
-function tintaSobre(hex){
-  const n=parseInt(hex.slice(1),16), r=n>>16, g=n>>8&255, b=n&255;
-  return (0.299*r+0.587*g+0.114*b)>150 ? '#151515' : '#ffffff';
-}
-
-// Chapa dibujada acostada (largo en horizontal), cada corte con su color,
+// Chapa dibujada acostada (largo en horizontal), cada faja marcada con su N° de corte,
 // cotas del ancho de cada faja a la derecha y el sobrante marcado con su medida.
 function sheetSVG(sheet, pxW){
   const ch=chapaSel();
@@ -645,17 +724,19 @@ function sheetSVG(sheet, pxW){
   svg+='<rect x="'+X(0)+'" y="'+Y(0)+'" width="'+sw.toFixed(1)+'" height="'+sh.toFixed(1)+'" fill="url(#sobr)"/>';
 
   for(const p of piezas){
-    const c=colorCorte(p.q.k), t=tintaSobre(c);
+    const c='#d4d4cf', t='#151515';
     const x=mL+p.x*s, y=mT+p.y*s, w=p.w*s, h=p.h*s;
-    svg+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+w.toFixed(1)+'" height="'+h.toFixed(1)+'" fill="'+c+'" stroke="#ffffff" stroke-width="1.2"/>';
+    svg+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+w.toFixed(1)+'" height="'+h.toFixed(1)+'" fill="'+c+'" stroke="#3d3d3d" stroke-width="1"/>';
     const cx=x+w/2, cy=y+h/2;
     const vertical = h>w*1.3;
     const lado=vertical?w:h, largo=vertical?h:w;
     const fs=Math.max(8,Math.min(15,lado/2.6));
     if(lado>=13 && largo>=40){
       const rot=vertical?' transform="rotate(-90 '+cx.toFixed(1)+' '+cy.toFixed(1)+')"':'';
-      const txt='N°'+p.q.k+'  ·  '+fmt(p.q.w)+' × '+fmt(p.q.h);
-      svg+='<text x="'+cx.toFixed(1)+'" y="'+(cy+fs*0.35).toFixed(1)+'" font-size="'+fs.toFixed(1)+'" font-weight="700" text-anchor="middle" fill="'+t+'"'+rot+'>'+(largo>txt.length*fs*0.55?txt:'N°'+p.q.k)+'</text>';
+      const ancho=fmt(Math.min(p.q.w,p.q.h)), lg=fmt(Math.max(p.q.w,p.q.h));
+      const opciones=['CORTE N°'+p.q.k+'  ·  '+p.q.nombre+'  ·  '+ancho+' × '+lg, 'N°'+p.q.k+' · '+ancho+' × '+lg, 'N°'+p.q.k];
+      const txt=opciones.find(o=>o.length*fs*0.58<largo-8)||'N°'+p.q.k;
+      svg+='<text x="'+cx.toFixed(1)+'" y="'+(cy+fs*0.35).toFixed(1)+'" font-size="'+fs.toFixed(1)+'" font-weight="700" text-anchor="middle" fill="'+t+'"'+rot+'>'+esc(txt)+'</text>';
     }
   }
 
@@ -686,9 +767,6 @@ function sheetSVG(sheet, pxW){
   svg+='<rect x="'+X(0)+'" y="'+Y(0)+'" width="'+sw.toFixed(1)+'" height="'+sh.toFixed(1)+'" fill="none" stroke="#151515" stroke-width="1.6"/>';
   return '<svg viewBox="0 0 '+pxW+' '+pxH.toFixed(1)+'" width="'+pxW+'" style="max-width:100%;height:auto" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,sans-serif">'+svg+'</svg>';
 }
-function leyendaHTML(){
-  return '<div class="leyenda">'+S.piezas.map((p,i)=>'<span><i style="background:'+colorCorte(i+1)+'"></i>N°'+(i+1)+' '+esc(p.nombre)+'</span>').join('')+'</div>';
-}
 
 /* ================= render de la app ================= */
 const el=id=>document.getElementById(id);
@@ -704,7 +782,7 @@ function renderDatos(){
 function renderLista(){
   el('listaPiezas').innerHTML=S.piezas.map((p,i)=>
     '<button class="pieza-item'+(i===S.sel?' sel':'')+'" data-act="sel-pieza" data-i="'+i+'">'+
-    '<i class="dot" style="background:'+colorCorte(i+1)+'"></i><span class="num">N°'+(i+1)+'</span><span class="nm">'+esc(p.nombre)+'</span><span class="qt">×'+fmt(num(p.cant,1))+'</span></button>'
+    '<span class="num">N°'+(i+1)+'</span><span class="nm">'+esc(p.nombre)+'</span><span class="qt">×'+fmt(num(p.cant,1))+'</span></button>'
   ).join('') || '<p class="hint">Sin cortes. Agregá el primero.</p>';
 }
 
@@ -769,7 +847,6 @@ function renderPlan(){
       ? '✓ Es la menor cantidad de chapas posible para esta superficie de cortes.'
       : 'Por superficie, el mínimo teórico sería '+pack.minimo+' chapa'+(pack.minimo===1?'':'s')+' (las medidas de las piezas no permiten llegar a ese número sin cortarlas).')+
      (pack.sheets.length>1?' El sobrante queda concentrado en la última chapa.':'')+'</p>';
-  h+=leyendaHTML();
   h+='<div class="sheets">'+pack.sheets.map((s,i)=>
     '<figure class="sheet-fig"><figcaption>CHAPA N°'+(i+1)+' <span class="waste">· aprovechamiento '+Math.round(s.uso*100)+'%</span></figcaption>'+sheetSVG(s,600)+'</figure>'
   ).join('')+'</div>';
@@ -796,7 +873,7 @@ function buildPrint(){
   h+='<div class="pg"><h1>PLEGADO DE CHAPA — '+esc(mat.corto)+'</h1><div class="meta">'+meta+'</div>';
   h+='<table class="res"><tr><th>Corte</th><th>Nombre</th><th>Desarrollo × Largo (mm)</th><th>Pliegues</th><th>Cantidad</th></tr>';
   S.piezas.forEach((p,i)=>{
-    h+='<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;background:'+colorCorte(i+1)+'"></span>N°'+(i+1)+'</td><td>'+esc(p.nombre)+'</td><td>'+fmt(desarrollo(p))+' × '+fmt(num(p.largo))+'</td><td>'+(p.segs.length-1)+'</td><td>'+fmt(num(p.cant,1))+'</td></tr>';
+    h+='<tr><td>N°'+(i+1)+'</td><td>'+esc(p.nombre)+'</td><td>'+fmt(desarrollo(p))+' × '+fmt(num(p.largo))+'</td><td>'+(p.segs.length-1)+'</td><td>'+fmt(num(p.cant,1))+'</td></tr>';
   });
   h+='</table>';
   if(pack.sheets.length){
@@ -810,7 +887,6 @@ function buildPrint(){
   pack.sheets.forEach((s,i)=>{
     h+='<div class="pg"><h1>PLEGADO DE CHAPA LISA '+ch.label.replace(' × ','X')+'</h1>'+
        '<h2>CHAPA N°'+(i+1)+'</h2><div class="meta">'+meta+'</div>'+
-       leyendaHTML()+
        '<div style="text-align:center">'+sheetSVG(s,690)+'</div>'+
        '<p style="font-size:12px;color:#444">Aprovechamiento de esta chapa: '+Math.round(s.uso*100)+'%. Medidas interiores en mm (desarrollo × largo).</p>'+
        '<div class="foot">Plegados · '+esc(S.obra||'')+' · '+fechaLegible()+'</div></div>';
